@@ -27,13 +27,7 @@
       "left": 253.4,
       "attrs": { "color": "blue" }
     },
-    {
-      "type": "wokwi-pushbutton",
-      "id": "btn1",
-      "top": -22.6,
-      "left": 163.2,
-      "attrs": { "color": "black", "xray": "", "bounce": "1" }
-    }
+    { "type": "wokwi-ky-040", "id": "encoder1", "top": 116.9, "left": -240.8, "attrs": {} }
   ],
   "connections": [
     [ "esp:TX0", "$serialMonitor:RX", "", [] ],
@@ -52,8 +46,11 @@
     [ "dht1:VCC", "esp:VIN", "red", [ "v0" ] ],
     [ "dht1:SDA", "esp:D14", "gold", [ "v9.6", "h48.1", "v-19.3" ] ],
     [ "dht1:GND", "esp:GND.2", "black", [ "v0" ] ],
-    [ "btn1:1.l", "esp:D18", "green", [ "h0" ] ],
-    [ "btn1:2.l", "esp:GND.1", "black", [ "v48.2", "h-47.7" ] ]
+    [ "encoder1:GND", "esp:GND.2", "black", [ "h67.2", "v-85.5" ] ],
+    [ "encoder1:CLK", "esp:D32", "violet", [ "h28.8", "v-134.4", "h86.4", "v-9.5" ] ],
+    [ "encoder1:DT", "esp:D33", "blue", [ "h76.8", "v-134.3", "h67.2" ] ],
+    [ "encoder1:SW", "esp:D12", "green", [ "h38.4", "v-104.8" ] ],
+    [ "encoder1:VCC", "esp:3V3", "red", [ "h259.2", "v-86" ] ]
   ],
   "dependencies": {}
 }

@@ -5,22 +5,31 @@
 #define LED_RIEGO 2
 #define POTENC 34
 #define SENSOR 14
-#define BOTON 18 
+
+// ENCODER
+#define CLK 32
+#define DT 33
+#define BOTON 12
 
 Device _device(128, 64, -1, SENSOR, DHT22);
 int umbral_minimo;
+int opc = 0;
+int ant_opc;
 bool riego_encendido = false;
-bool pantalla = false;
 bool ant_temp_est, ant_hum_est;
+bool mostrarMenu = true;
 
 // put function declarations here:
 void esp32_io_setup(void);
-void pantalla1(float temp, int ref, bool estado);
-void pantalla2(float hum, bool estado);
+void mostrar_menu(void);
+void readEncoder();
+void hacerOpcion(float temp, int temp_referencia, float hum);
 
 void setup() {
   Serial.begin(9600);
   esp32_io_setup();
+  // Si gira el encoder, interrumpir y llamar a la funcion readEncoder
+  attachInterrupt(digitalPinToInterrupt(CLK), readEncoder, FALLING);
   _device.begin();
 
   umbral_minimo = (int) random(40, 61); // valor aleatorio entre 4 y 60 inclusive
@@ -29,13 +38,15 @@ void setup() {
   Serial.println("INICIO SISTEMA\nUmbral aleatorio: " + String(umbral_minimo) + "%");
 
   delay(500);
+
+  mostrar_menu();
 }
 
 void loop() {
   // Recibimos el potenciometro y lo mapeamos entre 15 y 40 °C
   int temp_referencia = map(analogRead(POTENC), 0, 4095, -40, 80);
 
-  // Leer temperatura actual
+  // Temperatura actual
   float temp = _device.readTemp();
 
   // Verificar si cambio el estado
@@ -50,7 +61,7 @@ void loop() {
     }
   }
 
-  // Leer humedad actual
+  // Humedad actual
   float hum = _device.readHum();
 
   // Verificar si cambio el estado
@@ -76,23 +87,23 @@ void loop() {
     riego_encendido = !riego_encendido;
   }
 
-  // Mostrar y actualizar pantalla
-  if (pantalla){
-    pantalla1(temp, temp_referencia, temp > temp_referencia);
-  }else{
-    pantalla2(hum, hum < umbral_minimo);
+  // Si se apreta el boton, cambiar entre menu y opcion
+  if (digitalRead(BOTON) == LOW){
+    mostrarMenu = !mostrarMenu;
+    // Verificar si mostrar menu o hacer una opcion
+    if (mostrarMenu) mostrar_menu(); //Mostrar menu
   }
 
-  // Si se apreta el boton, cambiar pantalla
-  if (digitalRead(BOTON) == LOW){
-    pantalla = !pantalla;
-  }
+  if (ant_opc != opc) mostrar_menu(); // Si cambia la opcion, actualizar menu
+  if (!mostrarMenu) hacerOpcion(temp, temp_referencia, hum); // Hacer opcion si no se muestra el menu
 
   // Guardar estado de temperatura y humedad anterior
   ant_temp_est = temp > temp_referencia;
   ant_hum_est = hum < umbral_minimo;
+  // Guardar anterior opcion
+  ant_opc = opc;
   
-  delay(500);
+  delay(100);
 }
 
 // put function definitions here:
@@ -100,27 +111,58 @@ void esp32_io_setup(void) {
   pinMode(LED_VENT, OUTPUT);
   pinMode(LED_RIEGO, OUTPUT);
   pinMode(POTENC, INPUT);
+  // ENCODER
+  pinMode(CLK, INPUT);
+  pinMode(DT, INPUT);
   pinMode(BOTON, INPUT_PULLUP);
 }
 
-// Mostrar pantalla 1 (Temperatura)
-void pantalla1 (float temp, int ref, bool estado){
-  String est;
-  if (estado){
-    est = "Encendido";
-  }else{
-    est = "Apagado";
+// Actualizar menu con nueva opcion
+void mostrar_menu(void){
+  const String opciones[] = {
+    "Mostrar estado invernadero",
+    "Modificar valores referencia",
+    "Forzar activacion/detencion ventilacion",
+    "Forzar activacion/detencion riego"
+  };
+
+  String menu = "";
+  for(int i = 0; i < 4; i++){
+    if (i == opc){
+      menu += "-> " + opciones[i] + "\n";
+    }else{
+      menu += "- " + opciones[i] + "\n";
+    }
   }
-  _device.showDisplay("Temperatura: " + String(temp) + "'C\nReferencia: " + String(ref) + "'C\nEstado: " + est);
+
+  _device.showDisplay(menu);
 }
 
-// Mostrar pantalla 2 (Humedad)
-void pantalla2 (float hum, bool estado){
-  String est;
-  if (estado){
-    est = "Encendido";
-  }else{
-    est = "Apagado";
+// Cambiar opcion
+void readEncoder() {
+  if (mostrarMenu){
+    int dtValue = digitalRead(DT);
+    if (dtValue == HIGH) {
+      opc++;
+      opc %= 4; 
+    }
+    if (dtValue == LOW) {
+      opc += 3;
+      opc %= 4;
+    }
   }
-  _device.showDisplay("Humedad: " + String(hum) + "%\nUmbral: " + String(umbral_minimo) + "%\nEstado: " + est);
+}
+
+// Seleccionar Opcion
+void hacerOpcion(float temp, int temp_referencia, float hum){
+  
+  switch (opc) {
+  case 0:
+   _device.showDisplay("Temperatura: " + String(temp) + "'C \nReferencia: " + String(temp_referencia) +
+                "'C \n\nHumedad: " + String(hum) + "% \nUmbral: " + String(umbral_minimo));
+    break;
+  
+  case 1:
+    break;
+  }
 }
