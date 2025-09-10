@@ -3,7 +3,7 @@ In the following project we use wokwi in vscode to design an ESP-32 circuit whic
 
 ![Photo 1]()
 
-## Instalación
+## Installation
 
 Follow the steps below to set up this repository:
 
