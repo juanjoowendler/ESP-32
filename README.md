@@ -16,5 +16,5 @@ Follow the steps below to set up this repository:
 
 3. **Clone this repository using the following command:**  
    ```bash
-   git clone https://github.com/SebastianSidorowicz/ISW_Grupo2_2025_4k1.git
+   git clone https://github.com/juanjoowendler/ESP-32.git
    ```
