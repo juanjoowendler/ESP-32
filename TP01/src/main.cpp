@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "Device.h"
+#include "Menu.h"
 
 #define LED_VENT 5
 #define LED_RIEGO 2
@@ -12,18 +13,25 @@
 #define BOTON 12
 
 Device _device(128, 64, -1, SENSOR, DHT22);
+String opcionesMenu[] = {
+    "Mostrar estado invernadero",
+    "Modificar valores referencia",
+    "Forzar activacion/detencion ventilacion",
+    "Forzar activacion/detencion riego"
+};
+Menu menuPrincipal(opcionesMenu, 4, true);
 int umbral_minimo;
-int opc = 0;
-int ant_opc;
+byte ant_opc;
 bool riego_encendido = false;
 bool ant_temp_est, ant_hum_est;
-bool mostrarMenu = true;
+volatile bool encoderMoved = false;
 
 // put function declarations here:
 void esp32_io_setup(void);
-void mostrar_menu(void);
-void readEncoder();
 void hacerOpcion(float temp, int temp_referencia, float hum);
+void readEncoder();
+void mostrar_menu();
+void mostrar_menu(Menu menu);
 
 void setup() {
   Serial.begin(9600);
@@ -42,7 +50,21 @@ void setup() {
   mostrar_menu();
 }
 
+void IRAM_ATTR readEncoder() {
+  encoderMoved = true;
+}
+
+
+extern "C" {
+#include "esp_heap_caps.h"
+}
+
 void loop() {
+  // Comprobación de integridad de heap
+  if (!heap_caps_check_integrity_all(true)) {
+    Serial.println("[ERROR] Corrupción de heap detectada");
+    delay(1000);
+  }
   // Recibimos el potenciometro y lo mapeamos entre 15 y 40 °C
   int temp_referencia = map(analogRead(POTENC), 0, 4095, -40, 80);
 
@@ -89,21 +111,25 @@ void loop() {
 
   // Si se apreta el boton, cambiar entre menu y opcion
   if (digitalRead(BOTON) == LOW){
-    mostrarMenu = !mostrarMenu;
+    Serial.println(1);
     // Verificar si mostrar menu o hacer una opcion
-    if (mostrarMenu) mostrar_menu(); //Mostrar menu
+    if (menuPrincipal.changeEnMenu()) mostrar_menu(); //Mostrar menu
   }
 
-  if (ant_opc != opc) mostrar_menu(); // Si cambia la opcion, actualizar menu
-  if (!mostrarMenu) hacerOpcion(temp, temp_referencia, hum); // Hacer opcion si no se muestra el menu
+  if (ant_opc != menuPrincipal.getOpcion()) mostrar_menu(); // Si cambia la opcion, actualizar menu
+  if (!menuPrincipal.getEnMenu()) hacerOpcion(temp, temp_referencia, hum); // Hacer opcion si no se muestra el menu
 
   // Guardar estado de temperatura y humedad anterior
   ant_temp_est = temp > temp_referencia;
   ant_hum_est = hum < umbral_minimo;
   // Guardar anterior opcion
-  ant_opc = opc;
+  ant_opc = menuPrincipal.getOpcion();
   
   delay(100);
+    if (encoderMoved) {
+      menuPrincipal.changeOpcion(DT);
+      encoderMoved = false;
+    }
 }
 
 // put function definitions here:
@@ -117,52 +143,29 @@ void esp32_io_setup(void) {
   pinMode(BOTON, INPUT_PULLUP);
 }
 
-// Actualizar menu con nueva opcion
-void mostrar_menu(void){
-  const String opciones[] = {
-    "Mostrar estado invernadero",
-    "Modificar valores referencia",
-    "Forzar activacion/detencion ventilacion",
-    "Forzar activacion/detencion riego"
-  };
-
-  String menu = "";
-  for(int i = 0; i < 4; i++){
-    if (i == opc){
-      menu += "-> " + opciones[i] + "\n";
-    }else{
-      menu += "- " + opciones[i] + "\n";
-    }
-  }
-
-  _device.showDisplay(menu);
-}
-
-// Cambiar opcion
-void readEncoder() {
-  if (mostrarMenu){
-    int dtValue = digitalRead(DT);
-    if (dtValue == HIGH) {
-      opc++;
-      opc %= 4; 
-    }
-    if (dtValue == LOW) {
-      opc += 3;
-      opc %= 4;
-    }
-  }
-}
-
 // Seleccionar Opcion
 void hacerOpcion(float temp, int temp_referencia, float hum){
   
-  switch (opc) {
+  switch (menuPrincipal.getOpcion()) {
   case 0:
    _device.showDisplay("Temperatura: " + String(temp) + "'C \nReferencia: " + String(temp_referencia) +
                 "'C \n\nHumedad: " + String(hum) + "% \nUmbral: " + String(umbral_minimo));
     break;
   
   case 1:
+    
     break;
   }
+}
+/*
+void readEncoder(){
+  menuPrincipal.changeOpcion(DT);
+}*/
+
+void mostrar_menu(){
+  mostrar_menu(menuPrincipal);
+}
+
+void mostrar_menu(Menu menu){
+  _device.showDisplay("Menu");
 }
