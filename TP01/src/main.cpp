@@ -18,21 +18,26 @@ int ant_opc;
 bool riego_encendido = false;
 bool ant_temp_est, ant_hum_est;
 bool mostrarMenu = true;
+int temp_referencia;
+String serialLine;
 
 // put function declarations here:
 void esp32_io_setup(void);
 void mostrar_menu(void);
 void readEncoder();
 void hacerOpcion(float temp, int temp_referencia, float hum);
+void modificarUmbralHumedad();
+void modificarTempManual();
 
-void setup() {
+void setup()
+{
   Serial.begin(9600);
   esp32_io_setup();
   // Si gira el encoder, interrumpir y llamar a la funcion readEncoder
   attachInterrupt(digitalPinToInterrupt(CLK), readEncoder, FALLING);
   _device.begin();
 
-  umbral_minimo = (int) random(40, 61); // valor aleatorio entre 4 y 60 inclusive
+  umbral_minimo = (int)random(40, 61); // valor aleatorio entre 4 y 60 inclusive
 
   _device.showDisplay(String(umbral_minimo) + "%");
   Serial.println("INICIO SISTEMA\nUmbral aleatorio: " + String(umbral_minimo) + "%");
@@ -42,20 +47,25 @@ void setup() {
   mostrar_menu();
 }
 
-void loop() {
+void loop()
+{
   // Recibimos el potenciometro y lo mapeamos entre 15 y 40 °C
-  int temp_referencia = map(analogRead(POTENC), 0, 4095, -40, 80);
+  temp_referencia = map(analogRead(POTENC), 0, 4095, -40, 80);
 
   // Temperatura actual
   float temp = _device.readTemp();
 
   // Verificar si cambio el estado
-  if ((temp > temp_referencia) != ant_temp_est){
+  if ((temp > temp_referencia) != ant_temp_est)
+  {
     // Si la temperatura es menor a la de referencia encendemos el LED, sino lo apagamos
-    if (temp > temp_referencia){
+    if (temp > temp_referencia)
+    {
       digitalWrite(LED_VENT, HIGH);
       Serial.println("Ventilador prendido");
-    }else{
+    }
+    else
+    {
       digitalWrite(LED_VENT, LOW);
       Serial.println("Ventilador apagado");
     }
@@ -65,11 +75,15 @@ void loop() {
   float hum = _device.readHum();
 
   // Verificar si cambio el estado
-  if ((hum < umbral_minimo) != ant_hum_est){
+  if ((hum < umbral_minimo) != ant_hum_est)
+  {
     // Si la humedad es menor al umbral minimo, el LED parpadea, sino se apaga
-    if (hum < umbral_minimo){
+    if (hum < umbral_minimo)
+    {
       Serial.println("Riego activado");
-    }else{
+    }
+    else
+    {
       // Apagar LED
       digitalWrite(LED_RIEGO, LOW);
       riego_encendido = false;
@@ -77,37 +91,46 @@ void loop() {
     }
   }
 
-  if (hum < umbral_minimo){
+  if (hum < umbral_minimo)
+  {
     // Utilizar un bool para generar parpadeo
-    if (riego_encendido) {
+    if (riego_encendido)
+    {
       digitalWrite(LED_RIEGO, HIGH);
-    } else {
+    }
+    else
+    {
       digitalWrite(LED_RIEGO, LOW);
     }
     riego_encendido = !riego_encendido;
   }
 
   // Si se apreta el boton, cambiar entre menu y opcion
-  if (digitalRead(BOTON) == LOW){
+  if (digitalRead(BOTON) == LOW)
+  {
     mostrarMenu = !mostrarMenu;
     // Verificar si mostrar menu o hacer una opcion
-    if (mostrarMenu) mostrar_menu(); //Mostrar menu
+    if (mostrarMenu)
+      mostrar_menu(); // Mostrar menu
   }
 
-  if (ant_opc != opc) mostrar_menu(); // Si cambia la opcion, actualizar menu
-  if (!mostrarMenu) hacerOpcion(temp, temp_referencia, hum); // Hacer opcion si no se muestra el menu
+  if (ant_opc != opc)
+    mostrar_menu(); // Si cambia la opcion, actualizar menu
+  if (!mostrarMenu)
+    hacerOpcion(temp, temp_referencia, hum); // Hacer opcion si no se muestra el menu
 
   // Guardar estado de temperatura y humedad anterior
   ant_temp_est = temp > temp_referencia;
   ant_hum_est = hum < umbral_minimo;
   // Guardar anterior opcion
   ant_opc = opc;
-  
+
   delay(100);
 }
 
 // put function definitions here:
-void esp32_io_setup(void) {
+void esp32_io_setup(void)
+{
   pinMode(LED_VENT, OUTPUT);
   pinMode(LED_RIEGO, OUTPUT);
   pinMode(POTENC, INPUT);
@@ -118,19 +141,24 @@ void esp32_io_setup(void) {
 }
 
 // Actualizar menu con nueva opcion
-void mostrar_menu(void){
+void mostrar_menu(void)
+{
   const String opciones[] = {
-    "Mostrar estado invernadero",
-    "Modificar valores referencia",
-    "Forzar activacion/detencion ventilacion",
-    "Forzar activacion/detencion riego"
-  };
+      "Mostrar estado invernadero",
+      "Modificar temp. referencia",
+      "Modificar umbral de humedad",
+      "Forzar activacion/detencion ventilacion",
+      "Forzar activacion/detencion riego"};
 
   String menu = "";
-  for(int i = 0; i < 4; i++){
-    if (i == opc){
+  for (int i = 0; i < 5; i++)
+  {
+    if (i == opc)
+    {
       menu += "-> " + opciones[i] + "\n";
-    }else{
+    }
+    else
+    {
       menu += "- " + opciones[i] + "\n";
     }
   }
@@ -139,30 +167,98 @@ void mostrar_menu(void){
 }
 
 // Cambiar opcion
-void readEncoder() {
-  if (mostrarMenu){
+void readEncoder()
+{
+  if (mostrarMenu)
+  {
     int dtValue = digitalRead(DT);
-    if (dtValue == HIGH) {
+    if (dtValue == HIGH)
+    {
       opc++;
-      opc %= 4; 
+      opc %= 5;
     }
-    if (dtValue == LOW) {
-      opc += 3;
-      opc %= 4;
+    if (dtValue == LOW)
+    {
+      opc += 4;
+      opc %= 5;
     }
   }
 }
 
 // Seleccionar Opcion
-void hacerOpcion(float temp, int temp_referencia, float hum){
-  
-  switch (opc) {
+void hacerOpcion(float temp, int temp_referencia, float hum)
+{
+
+  switch (opc)
+  {
   case 0:
-   _device.showDisplay("Temperatura: " + String(temp) + "'C \nReferencia: " + String(temp_referencia) +
-                "'C \n\nHumedad: " + String(hum) + "% \nUmbral: " + String(umbral_minimo));
+    _device.showDisplay("Temperatura: " + String(temp) + "'C \nReferencia: " + String(temp_referencia) +
+                        "'C \n\nHumedad: " + String(hum) + "% \nUmbral: " + String(umbral_minimo));
     break;
-  
+
   case 1:
+    modificarTempManual();
     break;
+  case 2:
+    modificarUmbralHumedad();
+    break;
+  }
+
+}
+
+// temp_referencia
+
+void modificarUmbralHumedad()
+{
+  _device.showDisplay("Inserte nuevo valor de humedad (40-60): ");
+
+  if (Serial.available())
+  {
+    String aux = "";
+
+    while (Serial.available())
+    {
+      char c = (char)Serial.read();
+      if (c != '\n' && c != '\r') { // descartar ENTER/CR
+        aux += c;
+      }
+    }
+
+    aux.trim(); // quitar espacios
+
+    // validar que sean solo dígitos
+    bool esNumero = aux.length() > 0;
+    for (int i = 0; i < aux.length() && esNumero; i++) {
+      if (!isDigit(aux[i])) esNumero = false;
+    }
+
+    if (esNumero) {
+      int valor = aux.toInt();
+      if (valor >= 40 && valor <= 60) {
+        umbral_minimo = valor;
+        Serial.print("✅ Nuevo umbral_humedad = ");
+        Serial.println(umbral_minimo);
+      } else {
+        Serial.println("❌ Error: valor fuera de rango (40–60).");
+      }
+    } else {
+      Serial.print("❌ Error: no es un número válido -> ");
+      Serial.println(aux);
+    }
+  }
+
+}
+
+void modificarTempManual() {
+  if (Serial.available() > 0) {         // ¿hay datos en el buffer?
+    String input = Serial.readStringUntil('\n');  // leo hasta Enter
+    int nuevaRef = input.toInt();       // convierto a entero
+
+    if (nuevaRef != 0 || input == "0") {  // validación básica
+      temp_referencia = nuevaRef;
+      Serial.println("Nueva temperatura de referencia: " + String(temp_referencia) + "°C");
+    } else {
+      Serial.println("Entrada invalida. Ingrese un número entero.");
+    }
   }
 }

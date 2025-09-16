@@ -13,5 +13,6 @@
         "**/Thumbs.db": true,
         "**/.rmv/catalog/**": true,
         "*/_*": false
-    }
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }
