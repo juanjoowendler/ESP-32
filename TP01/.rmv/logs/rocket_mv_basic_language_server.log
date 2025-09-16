@@ -213,3 +213,4 @@ Account{name=..., path=..., type=PREDICT}
 2025-09-16 17:18:07.912 [pool-3-thread-1] INFO  com.rs.mv.mvvs.client.catalog.from.scan.CurrentPathScanner - [client:400205]scan file in current open file directory(C:/Users/manus/OneDrive/Escritorio/ESP-32/TP01/src)
 2025-09-16 17:19:50.958 [pool-3-thread-1] INFO  com.rs.mv.mvvs.client.catalog.from.scan.CurrentPathScanner - [client:400205]scan file in current open file directory(C:/Users/manus/OneDrive/Escritorio/ESP-32/TP01/src)
 2025-09-16 17:35:15.567 [pool-3-thread-1] INFO  com.rs.mv.mvvs.client.catalog.from.scan.CurrentPathScanner - [client:400205]scan file in current open file directory(C:/Users/manus/OneDrive/Escritorio/ESP-32/TP01/src)
+2025-09-16 17:36:33.389 [pool-3-thread-1] INFO  com.rs.mv.mvvs.client.catalog.from.scan.CurrentPathScanner - [client:400205]scan file in current open file directory(C:/Users/manus/OneDrive/Escritorio/ESP-32/TP01/src)

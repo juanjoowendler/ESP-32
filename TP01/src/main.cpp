@@ -1,163 +1,161 @@
 #include <Arduino.h>
 #include "Device.h"
 
-#define LED_VENT 5
-#define LED_RIEGO 2
-#define POTENC 34
-#define SENSOR 14
+// Pines del hardware
+#define PIN_LED_VENTILADOR 5
+#define PIN_LED_RIEGO 2
+#define PIN_POTENCIOMETRO 34
+#define PIN_SENSOR_DHT 14
 
-// ENCODER
-#define CLK 32
-#define DT 33
-#define BOTON 12
+// Pines del encoder rotatorio
+#define PIN_ENCODER_CLK 32
+#define PIN_ENCODER_DT 33
+#define PIN_BOTON_ENCODER 12
 
-Device _device(128, 64, -1, SENSOR, DHT22);
-int umbral_minimo;
-int opc = 0;
-int ant_opc;
-bool riego_encendido = false;
-bool ant_temp_est, ant_hum_est;
-bool mostrarMenu = true;
-bool ejecutarOpcion = false;
-bool potencActivo = true;
-int temp_referencia;
-int estadoVent;
-bool riegoPrendido = false;
-String serialLine;
+// Inicialización del dispositivo con display y sensor
+Device invernadero(128, 64, -1, PIN_SENSOR_DHT, DHT22);
 
-// put function declarations here:
-void esp32_io_setup(void);
-void mostrar_menu(void);
-void readEncoder();
-void hacerOpcion(float temp, int temp_referencia, float hum);
-void modificarUmbralHumedad();
-void modificarTempManual();
-void activarPotenc();
-void manualVentilacion();
-void manualRiego();
+// Variables globales
+int umbralHumedadMinima;         // Umbral de humedad (40–60%)
+int opcionMenu = 0;              // Opción seleccionada en el menú
+int opcionAnterior;              // Opción anterior para detectar cambios
+bool riegoBlinkEstado = false;   // Estado de parpadeo del riego
+bool tempEstadoAnterior;         // Estado anterior del control de temperatura
+bool humEstadoAnterior;          // Estado anterior del control de humedad
+bool mostrarMenu = true;         // Indica si se muestra el menú
+bool ejecutarOpcion = false;     // Indica si se está ejecutando una opción
+bool potenciometroActivo = true; // Control manual de temperatura por potenciómetro
+int temperaturaReferencia;       // Temperatura deseada
+int estadoVentilador;            // Estado del ventilador
+bool riegoActivo = false;        // Estado actual del riego
+String lineaSerial;              // Entrada recibida por Serial
+
+// Declaración de funciones
+void configurarEntradasSalidas();
+void mostrarMenuOpciones();
+void leerEncoder();
+void ejecutarAccion(float temp, int temperaturaReferencia, float hum);
+void cambiarUmbralHumedad();
+void cambiarTempManual();
+void activarPotenciometro();
+void forzarVentilacion();
+void forzarRiego();
 
 
+// ---------------- SETUP ----------------
 void setup() {
   Serial.begin(9600);
-  esp32_io_setup();
-  // Si gira el encoder, interrumpir y llamar a la funcion readEncoder
-  attachInterrupt(digitalPinToInterrupt(CLK), readEncoder, FALLING);
-  _device.begin();
+  configurarEntradasSalidas();
 
-  umbral_minimo = (int)random(40, 61); // valor aleatorio entre 4 y 60 inclusive
+  // Configurar interrupción del encoder
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_CLK), leerEncoder, FALLING);
 
-  _device.showDisplay(String(umbral_minimo) + "%");
-  Serial.println("INICIO SISTEMA\nUmbral aleatorio: " + String(umbral_minimo) + "%");
+  invernadero.begin();
+
+  // Definir un umbral inicial de humedad aleatorio entre 40 y 60%
+  umbralHumedadMinima = (int)random(40, 61);
+
+  invernadero.showDisplay(String(umbralHumedadMinima) + "%");
+  Serial.println("INICIO SISTEMA\nUmbral aleatorio: " + String(umbralHumedadMinima) + "%");
 
   delay(500);
-
-  mostrar_menu();
+  mostrarMenuOpciones();
 }
 
+
+// ---------------- LOOP ----------------
 void loop() {
-  // Recibimos el potenciometro y lo mapeamos entre -5 y 60 °C
-  if(potencActivo){
-    temp_referencia = map(analogRead(POTENC), 0, 4095, -5, 60);
+  // Leer valor del potenciómetro si está activado
+  if(potenciometroActivo){
+    temperaturaReferencia = map(analogRead(PIN_POTENCIOMETRO), 0, 4095, -5, 60);
   }
 
-  // Temperatura actual
-  float temp = _device.readTemp();
+  // Leer temperatura actual
+  float temperaturaActual = invernadero.readTemp();
 
-  // Verificar si cambio el estado
-  if ((temp > temp_referencia) != ant_temp_est) {
-    // Si la temperatura es menor a la de referencia encendemos el LED, sino lo apagamos
-    if (temp > temp_referencia){
-      digitalWrite(LED_VENT, HIGH);
-      Serial.println("Ventilador prendido");
+  // Control automático del ventilador
+  if ((temperaturaActual > temperaturaReferencia) != tempEstadoAnterior) { // Si cambia el estado del ventilador
+    if (temperaturaActual > temperaturaReferencia){ // Apagar o Encender el ventilador
+      digitalWrite(PIN_LED_VENTILADOR, HIGH);
+      Serial.println("Ventilador encendido");
     } else {
-      digitalWrite(LED_VENT, LOW);
+      digitalWrite(PIN_LED_VENTILADOR, LOW);
       Serial.println("Ventilador apagado");
     }
   }
 
-  // Humedad actual
-  float hum = _device.readHum();
+  // Leer humedad actual
+  float humedadActual = invernadero.readHum();
 
-  // Verificar si cambio el estado
-  if ((hum < umbral_minimo) != ant_hum_est) {
-    // Si la humedad es menor al umbral minimo, el LED parpadea, sino se apaga
-    if (hum < umbral_minimo) {
+  // Control automático del riego
+  if ((humedadActual < umbralHumedadMinima) != humEstadoAnterior) { // Si cambia el estado de la humedad
+    if (humedadActual < umbralHumedadMinima) { // Activar o Desactivar el riego
       Serial.println("Riego activado");
-      riegoPrendido = true;
+      riegoActivo = true;
     } else {
-      // Apagar LED
-      digitalWrite(LED_RIEGO, LOW);
-      riegoPrendido = false;
-      riego_encendido = false;
+      digitalWrite(PIN_LED_RIEGO, LOW);
+      riegoActivo = false;
+      riegoBlinkEstado = false;
       Serial.println("Riego desactivado");
     }
   }
 
-  if (riegoPrendido) {
-    // Utilizar un bool para generar parpadeo
-    if (riego_encendido) {
-      digitalWrite(LED_RIEGO, HIGH);
-    } else {
-      digitalWrite(LED_RIEGO, LOW);
-    }
-    riego_encendido = !riego_encendido;
+  // Si el riego está activo, hacer parpadear el LED
+  if (riegoActivo) {
+    digitalWrite(PIN_LED_RIEGO, riegoBlinkEstado ? HIGH : LOW);
+    riegoBlinkEstado = !riegoBlinkEstado;
   }
 
-  // Si se apreta el boton, cambiar entre menu y opcion
-  if (digitalRead(BOTON) == LOW) {
+  // Detectar pulsación del botón del encoder
+  if (digitalRead(PIN_BOTON_ENCODER) == LOW) {
     if (ejecutarOpcion){
-      switch (opc) {
-      case 1:
-        modificarTempManual();
-        break;
-      case 2:
-        modificarUmbralHumedad();
-        break;
-      case 3:
-        activarPotenc();
-        break;
-      case 4:
-        manualVentilacion();
-        break;
-      case 5:
-        manualRiego();
-        break;
+      switch (opcionMenu) {
+        case 1: cambiarTempManual(); break;
+        case 2: cambiarUmbralHumedad(); break;
+        case 3: activarPotenciometro(); break;
+        case 4: forzarVentilacion(); break;
+        case 5: forzarRiego(); break;
       }
-    }else {
+    } else {
       mostrarMenu = !mostrarMenu;
-      // Verificar si mostrar menu o hacer una opcion
       if (mostrarMenu)
-        mostrar_menu(); // Mostrar menu
+        mostrarMenuOpciones();
     }
   }
 
-  if (ant_opc != opc)
-    mostrar_menu(); // Si cambia la opcion, actualizar menu
-  if (!mostrarMenu)
-    hacerOpcion(temp, temp_referencia, hum); // Hacer opcion si no se muestra el menu
+  // Actualizar pantalla si cambió la opción
+  if (opcionAnterior != opcionMenu)
+    mostrarMenuOpciones();
 
-  // Guardar estado de temperatura y humedad anterior
-  ant_temp_est = temp > temp_referencia;
-  ant_hum_est = hum < umbral_minimo;
-  // Guardar anterior opcion
-  ant_opc = opc;
+  // Ejecutar la opción seleccionada si no está mostrando el menú
+  if (!mostrarMenu)
+    ejecutarAccion(temperaturaActual, temperaturaReferencia, humedadActual);
+
+  // Guardar estados anteriores
+  tempEstadoAnterior = temperaturaActual > temperaturaReferencia;
+  humEstadoAnterior = humedadActual < umbralHumedadMinima;
+  opcionAnterior = opcionMenu;
 
   delay(100);
 }
 
-// put function definitions here:
-void esp32_io_setup(void) {
-  pinMode(LED_VENT, OUTPUT);
-  pinMode(LED_RIEGO, OUTPUT);
-  pinMode(POTENC, INPUT);
-  // ENCODER
-  pinMode(CLK, INPUT);
-  pinMode(DT, INPUT);
-  pinMode(BOTON, INPUT_PULLUP);
+
+// ---------------- FUNCIONES ----------------
+
+// Configurar entradas y salidas de ESP32
+void configurarEntradasSalidas() {
+  pinMode(PIN_LED_VENTILADOR, OUTPUT);
+  pinMode(PIN_LED_RIEGO, OUTPUT);
+  pinMode(PIN_POTENCIOMETRO, INPUT);
+
+  // Encoder
+  pinMode(PIN_ENCODER_CLK, INPUT);
+  pinMode(PIN_ENCODER_DT, INPUT);
+  pinMode(PIN_BOTON_ENCODER, INPUT_PULLUP);
 }
 
-// Actualizar menu con nueva opcion
-void mostrar_menu(void) {
+// Mostrar menú de opciones en el display
+void mostrarMenuOpciones() {
   const String opciones[] = {
       "Mostrar estado invernadero",
       "Modificar temp. referencia",
@@ -168,153 +166,148 @@ void mostrar_menu(void) {
 
   String menu = "";
   for (int i = 0; i < 6; i++) {
-    if ((opc == 4 || opc == 5)&& i == 0) continue; 
-    if (i == opc) {
+    if ((opcionMenu == 4 || opcionMenu == 5) && i == 0) continue; 
+    if (i == opcionMenu) {
       menu += "-> " + opciones[i] + "\n";
     } else {
       menu += "- " + opciones[i] + "\n";
     }
   }
-  _device.showDisplay(menu);
+  invernadero.showDisplay(menu);
 }
 
-// Cambiar opcion
-void readEncoder() {
+// Leer giro del encoder para cambiar opción
+void leerEncoder() {
   if (mostrarMenu) {
-    int dtValue = digitalRead(DT);
-    if (dtValue == HIGH) {
-      opc += 5;
-      opc %= 6;
+    int dtValue = digitalRead(PIN_ENCODER_DT);
+    if (dtValue == HIGH) { // Subir opcion
+      opcionMenu += 5;
+      opcionMenu %= 6;
     }
-    if (dtValue == LOW) {
-      opc++;
-      opc %= 6;
+    if (dtValue == LOW) { // Bajar opcion
+      opcionMenu++;
+      opcionMenu %= 6;
     }
   }
 }
 
-// Seleccionar Opcion
-void hacerOpcion(float temp, int temp_referencia, float hum) {
-
-  switch (opc) {
-  case 0:
-    _device.showDisplay("Temperatura: " + String(temp) + "'C \nReferencia: " + String(temp_referencia) +
-                        "'C \n\nHumedad: " + String(hum) + "% \nUmbral: " + String(umbral_minimo));
-    break;
-  case 1:
-    ejecutarOpcion = true;
-    _device.showDisplay("Inserte un nuevo valor de referencia para la temperatura (-5 a 60): \n\n Presione el boton al ingresar el valor.");
-    break;
-  case 2:
-    ejecutarOpcion = true;
-    _device.showDisplay("Inserte nuevo valor de humedad (40-60): \n\n Presione el boton al ingresar el valor.");
-    break;
-  case 3:
-    ejecutarOpcion = true;
-    _device.showDisplay("Potenciometro activado.");
-    break;
-  case 4:
-    ejecutarOpcion = true;
-     _device.showDisplay("Ventilacion forzada");
-    break;
-  case 5:
-    ejecutarOpcion = true;
-     _device.showDisplay("Riego forzada");
-    break;
+// Ejecutar acción según opción elegida
+void ejecutarAccion(float temp, int temperaturaReferencia, float hum) {
+  switch (opcionMenu) {
+    case 0: // Mostrar estado invernadero
+      invernadero.showDisplay(
+        "Temperatura: " + String(temp) + "'C \nReferencia: " + String(temperaturaReferencia) +
+        "'C \n\nHumedad: " + String(hum) + "% \nUmbral: " + String(umbralHumedadMinima) + "%");
+      break;
+    case 1: // Modificar temp. referencia
+      ejecutarOpcion = true;
+      invernadero.showDisplay("Ingrese nueva temp. (-5 a 60'C)\n\nPresione boton para confirmar");
+      break;
+    case 2: // Modificar umbral de humedad
+      ejecutarOpcion = true;
+      invernadero.showDisplay("Ingrese nuevo umbral (40-60%)\n\nPresione boton para confirmar");
+      break;
+    case 3: // Activar potenciometro
+      ejecutarOpcion = true;
+      invernadero.showDisplay("Potenciometro activado.");
+      break;
+    case 4: // Ventilacion manual
+      ejecutarOpcion = true;
+      invernadero.showDisplay("Ventilacion manual");
+      break;
+    case 5: // Riego manual
+      ejecutarOpcion = true;
+      invernadero.showDisplay("Riego manual");
+      break;
   }
-
 }
 
-void modificarUmbralHumedad() {
+// Cambiar umbral de humedad desde Serial
+void cambiarUmbralHumedad() {
   if (Serial.available()) {
     String aux = "";
-
     while (Serial.available()) {
       char c = (char)Serial.read();
-      // aceptar dígitos del 0 al 9, descartar cualquier otra cosa
       if (c >= '0' && c <= '9') {
         aux += c;
-      }else if (c == '\n') break;
+      } else if (c == '\n') break;
     }
-
-    aux.trim(); // quitar espacios
+    aux.trim();
 
     int valor = aux.toInt();
     if (valor >= 40 && valor <= 60) {
-      umbral_minimo = valor;
-      Serial.print("Nuevo umbral_humedad = ");
-      Serial.println(umbral_minimo);
+      umbralHumedadMinima = valor;
+      Serial.print("Nuevo umbral de humedad: ");
+      Serial.println(umbralHumedadMinima);
     } else {
       Serial.println("Error: valor fuera de rango (40-60).");
     }
   }
 
   mostrarMenu = true;
-  mostrar_menu();
+  mostrarMenuOpciones();
   ejecutarOpcion = false;
 }
 
-void modificarTempManual() {
+// Cambiar temperatura de referencia desde Serial
+void cambiarTempManual() {
+  potenciometroActivo = false;
+  if (Serial.available() > 0) {
+    String input = Serial.readStringUntil('\n');
+    int nuevaRef = input.toInt();
 
-  potencActivo = false;
-  if (Serial.available() > 0) {         // ¿hay datos en el buffer?
-
-    String input = Serial.readStringUntil('\n');  // leo hasta Enter
-    int nuevaRef = input.toInt();       // convierto a entero
-
-    if (nuevaRef != 0 || input == "0") {  // validación básica
-      temp_referencia = nuevaRef;
-      Serial.println("Nueva temperatura de referencia: " + String(temp_referencia) + "°C");
+    if (nuevaRef != 0 || input == "0") {
+      temperaturaReferencia = nuevaRef;
+      Serial.println("Nueva temperatura de referencia: " + String(temperaturaReferencia) + "°C");
+      Serial.println("Potenciometro desactivado. Para volver a activarlo vaya al menu de opciones.")
     } else {
       Serial.println("Entrada invalida. Ingrese un número entero.");
     }
   }
 
   mostrarMenu = true;
-  mostrar_menu();
+  mostrarMenuOpciones();
   ejecutarOpcion = false;
 }
 
-void activarPotenc(){
-  potencActivo = true;
+// Activar lectura por potenciómetro
+void activarPotenciometro(){
+  potenciometroActivo = true;
   Serial.println("Potenciometro activado");
 
   mostrarMenu = true;
-  mostrar_menu();
+  mostrarMenuOpciones();
   ejecutarOpcion = false;
 }
 
-
-void manualVentilacion(){
-  int estadoVent = digitalRead(LED_VENT); 
-
-  if (estadoVent == HIGH) {
-    digitalWrite(LED_VENT, LOW);            
+// Control manual del ventilador
+void forzarVentilacion(){
+  int estadoVentilador = digitalRead(PIN_LED_VENTILADOR); 
+  if (estadoVentilador == HIGH) {
+    digitalWrite(PIN_LED_VENTILADOR, LOW);            
     Serial.println("Ventilador apagado");
   } else {
-    digitalWrite(LED_VENT, HIGH);           
-    Serial.println("Ventilador prendido");
+    digitalWrite(PIN_LED_VENTILADOR, HIGH);           
+    Serial.println("Ventilador encendido");
   }
   mostrarMenu = true;
-  mostrar_menu();
+  mostrarMenuOpciones();
   ejecutarOpcion = false;
 }
 
-void manualRiego(){
-  if (riegoPrendido) {
-    digitalWrite(LED_RIEGO, LOW);   
-    riegoPrendido = false;     
+// Control manual del riego
+void forzarRiego(){
+  if (riegoActivo) {
+    digitalWrite(PIN_LED_RIEGO, LOW);   
+    riegoActivo = false;     
     Serial.println("Riego apagado");
-    Serial.println(riegoPrendido);
-
   } else {
-    digitalWrite(LED_RIEGO, HIGH);  
-    riegoPrendido = true;     
-    Serial.println("Riego prendido");
-    Serial.println(riegoPrendido);
+    digitalWrite(PIN_LED_RIEGO, HIGH);  
+    riegoActivo = true;     
+    Serial.println("Riego encendido");
   }
    
   mostrarMenu = true;
-  mostrar_menu();
+  mostrarMenuOpciones();
   ejecutarOpcion = false;
 }
