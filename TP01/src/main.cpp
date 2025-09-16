@@ -18,6 +18,7 @@ int ant_opc;
 bool riego_encendido = false;
 bool ant_temp_est, ant_hum_est;
 bool mostrarMenu = true;
+bool ejecutarOpcion = false;
 int temp_referencia;
 String serialLine;
 
@@ -29,8 +30,7 @@ void hacerOpcion(float temp, int temp_referencia, float hum);
 void modificarUmbralHumedad();
 void modificarTempManual();
 
-void setup()
-{
+void setup() {
   Serial.begin(9600);
   esp32_io_setup();
   // Si gira el encoder, interrumpir y llamar a la funcion readEncoder
@@ -47,25 +47,20 @@ void setup()
   mostrar_menu();
 }
 
-void loop()
-{
-  // Recibimos el potenciometro y lo mapeamos entre 15 y 40 °C
-  temp_referencia = map(analogRead(POTENC), 0, 4095, -40, 80);
+void loop() {
+  // Recibimos el potenciometro y lo mapeamos entre -5 y 60 °C
+  temp_referencia = map(analogRead(POTENC), 0, 4095, -5, 60);
 
   // Temperatura actual
   float temp = _device.readTemp();
 
   // Verificar si cambio el estado
-  if ((temp > temp_referencia) != ant_temp_est)
-  {
+  if ((temp > temp_referencia) != ant_temp_est) {
     // Si la temperatura es menor a la de referencia encendemos el LED, sino lo apagamos
-    if (temp > temp_referencia)
-    {
+    if (temp > temp_referencia){
       digitalWrite(LED_VENT, HIGH);
       Serial.println("Ventilador prendido");
-    }
-    else
-    {
+    } else {
       digitalWrite(LED_VENT, LOW);
       Serial.println("Ventilador apagado");
     }
@@ -75,15 +70,11 @@ void loop()
   float hum = _device.readHum();
 
   // Verificar si cambio el estado
-  if ((hum < umbral_minimo) != ant_hum_est)
-  {
+  if ((hum < umbral_minimo) != ant_hum_est) {
     // Si la humedad es menor al umbral minimo, el LED parpadea, sino se apaga
-    if (hum < umbral_minimo)
-    {
+    if (hum < umbral_minimo) {
       Serial.println("Riego activado");
-    }
-    else
-    {
+    } else {
       // Apagar LED
       digitalWrite(LED_RIEGO, LOW);
       riego_encendido = false;
@@ -91,27 +82,30 @@ void loop()
     }
   }
 
-  if (hum < umbral_minimo)
-  {
+  if (hum < umbral_minimo) {
     // Utilizar un bool para generar parpadeo
-    if (riego_encendido)
-    {
+    if (riego_encendido) {
       digitalWrite(LED_RIEGO, HIGH);
-    }
-    else
-    {
+    } else {
       digitalWrite(LED_RIEGO, LOW);
     }
     riego_encendido = !riego_encendido;
   }
 
   // Si se apreta el boton, cambiar entre menu y opcion
-  if (digitalRead(BOTON) == LOW)
-  {
-    mostrarMenu = !mostrarMenu;
-    // Verificar si mostrar menu o hacer una opcion
-    if (mostrarMenu)
-      mostrar_menu(); // Mostrar menu
+  if (digitalRead(BOTON) == LOW) {
+    if (ejecutarOpcion){
+      switch (opc) {
+      case 2:
+        modificarUmbralHumedad();
+        break;
+      }
+    }else {
+      mostrarMenu = !mostrarMenu;
+      // Verificar si mostrar menu o hacer una opcion
+      if (mostrarMenu)
+        mostrar_menu(); // Mostrar menu
+    }
   }
 
   if (ant_opc != opc)
@@ -129,8 +123,7 @@ void loop()
 }
 
 // put function definitions here:
-void esp32_io_setup(void)
-{
+void esp32_io_setup(void) {
   pinMode(LED_VENT, OUTPUT);
   pinMode(LED_RIEGO, OUTPUT);
   pinMode(POTENC, INPUT);
@@ -141,8 +134,7 @@ void esp32_io_setup(void)
 }
 
 // Actualizar menu con nueva opcion
-void mostrar_menu(void)
-{
+void mostrar_menu(void) {
   const String opciones[] = {
       "Mostrar estado invernadero",
       "Modificar temp. referencia",
@@ -151,14 +143,11 @@ void mostrar_menu(void)
       "Forzar activacion/detencion riego"};
 
   String menu = "";
-  for (int i = 0; i < 5; i++)
-  {
-    if (i == opc)
-    {
+  for (int i = 0; i < 5; i++) {
+    if (opc == 4 && i == 0) continue; 
+    if (i == opc) {
       menu += "-> " + opciones[i] + "\n";
-    }
-    else
-    {
+    } else {
       menu += "- " + opciones[i] + "\n";
     }
   }
@@ -167,30 +156,24 @@ void mostrar_menu(void)
 }
 
 // Cambiar opcion
-void readEncoder()
-{
-  if (mostrarMenu)
-  {
+void readEncoder() {
+  if (mostrarMenu) {
     int dtValue = digitalRead(DT);
-    if (dtValue == HIGH)
-    {
-      opc++;
+    if (dtValue == HIGH) {
+      opc += 4;
       opc %= 5;
     }
-    if (dtValue == LOW)
-    {
-      opc += 4;
+    if (dtValue == LOW) {
+      opc++;
       opc %= 5;
     }
   }
 }
 
 // Seleccionar Opcion
-void hacerOpcion(float temp, int temp_referencia, float hum)
-{
+void hacerOpcion(float temp, int temp_referencia, float hum) {
 
-  switch (opc)
-  {
+  switch (opc) {
   case 0:
     _device.showDisplay("Temperatura: " + String(temp) + "'C \nReferencia: " + String(temp_referencia) +
                         "'C \n\nHumedad: " + String(hum) + "% \nUmbral: " + String(umbral_minimo));
@@ -198,59 +181,50 @@ void hacerOpcion(float temp, int temp_referencia, float hum)
 
   case 1:
     modificarTempManual();
+    mostrarMenu = true;
+    mostrar_menu();
     break;
   case 2:
-    modificarUmbralHumedad();
+    ejecutarOpcion = true;
+    _device.showDisplay("Inserte nuevo valor de humedad (40-60): \n\n Presione el boton cuando se haya enviado el umbral");
     break;
   }
 
 }
 
-// temp_referencia
-
-void modificarUmbralHumedad()
-{
-  _device.showDisplay("Inserte nuevo valor de humedad (40-60): ");
-
-  if (Serial.available())
-  {
+void modificarUmbralHumedad() {
+  if (Serial.available()) {
     String aux = "";
 
-    while (Serial.available())
-    {
+    while (Serial.available()) {
       char c = (char)Serial.read();
-      if (c != '\n' && c != '\r') { // descartar ENTER/CR
+      // aceptar dígitos del 0 al 9, descartar cualquier otra cosa
+      if (c >= '0' && c <= '9') {
         aux += c;
-      }
+      }else if (c == '\n') break;
     }
 
     aux.trim(); // quitar espacios
 
-    // validar que sean solo dígitos
-    bool esNumero = aux.length() > 0;
-    for (int i = 0; i < aux.length() && esNumero; i++) {
-      if (!isDigit(aux[i])) esNumero = false;
-    }
-
-    if (esNumero) {
-      int valor = aux.toInt();
-      if (valor >= 40 && valor <= 60) {
-        umbral_minimo = valor;
-        Serial.print("✅ Nuevo umbral_humedad = ");
-        Serial.println(umbral_minimo);
-      } else {
-        Serial.println("❌ Error: valor fuera de rango (40–60).");
-      }
+    int valor = aux.toInt();
+    if (valor >= 40 && valor <= 60) {
+      umbral_minimo = valor;
+      Serial.print("✅ Nuevo umbral_humedad = ");
+      Serial.println(umbral_minimo);
     } else {
-      Serial.print("❌ Error: no es un número válido -> ");
-      Serial.println(aux);
+      Serial.println("❌ Error: valor fuera de rango (40-60).");
     }
   }
 
+  mostrarMenu = true;
+  mostrar_menu();
+  ejecutarOpcion = false;
 }
 
 void modificarTempManual() {
   if (Serial.available() > 0) {         // ¿hay datos en el buffer?
+    _device.showDisplay("Inserte un nuevo valor de referencia para la temperatura (-5 a 60)");
+
     String input = Serial.readStringUntil('\n');  // leo hasta Enter
     int nuevaRef = input.toInt();       // convierto a entero
 
