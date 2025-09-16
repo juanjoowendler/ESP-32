@@ -259,7 +259,7 @@ void cambiarTempManual() {
     if (nuevaRef != 0 || input == "0") {
       temperaturaReferencia = nuevaRef;
       Serial.println("Nueva temperatura de referencia: " + String(temperaturaReferencia) + "°C");
-      Serial.println("Potenciometro desactivado. Para volver a activarlo vaya al menu de opciones.")
+      Serial.println("Potenciometro desactivado. Para volver a activarlo vaya al menu de opciones.");
     } else {
       Serial.println("Entrada invalida. Ingrese un número entero.");
     }
