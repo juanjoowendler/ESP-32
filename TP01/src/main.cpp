@@ -1,6 +1,8 @@
+// IMPORTACIONES
 #include <Arduino.h>
 #include "Device.h"
 
+// DEFINICION DE PINES
 #define LED_VENT 5
 #define LED_RIEGO 2
 #define POTENC 34
@@ -25,6 +27,7 @@ void mostrar_menu(void);
 void readEncoder();
 void hacerOpcion(float temp, int temp_referencia, float hum);
 
+// CONFIGURACION INICIAL
 void setup() {
   Serial.begin(9600);
   esp32_io_setup();
@@ -42,6 +45,7 @@ void setup() {
   mostrar_menu();
 }
 
+// BUCLE PRINCIPAL
 void loop() {
   // Recibimos el potenciometro y lo mapeamos entre 15 y 40 °C
   int temp_referencia = map(analogRead(POTENC), 0, 4095, -40, 80);
